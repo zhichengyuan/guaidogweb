@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+
+	<head lang="en">
+		<meta charset="UTF-8">
+		<title>大文件上传实例</title>
+		<script type="text/javascript">
+			function upload() {
+				var blob = document.getElementById('file').files[0];
+				uploadRequest(blob);
+			}
+
+			//请求上传文件
+			function uploadRequest(blob) {
+				var json = '{"version":"1.0", "command":"UploadRequest", "content":{"filename": "' + blob.name + '","filesize": ' + blob.size + '}}';
+				var xhr = new XMLHttpRequest();
+				xhr.open("POST", "/action/command", true);
+				xhr.setRequestHeader("Content-Type", "application/json");
+				xhr.onreadystatechange = function() {
+					if(xhr.readyState == 4) {
+						if(xhr.status == 200) {
+							var respJsonObj = JSON.parse(xhr.responseText);
+							var respCmd = respJsonObj.command;
+							var respErrcode = respJsonObj.errcode;
+							var respData = respJsonObj.content;
+
+							if(respErrcode == 0) {
+								return startUpload(blob);
+							}
+							alert("upload request failed with " + respErrcode);
+							return;
+						}
+						alert("upload request failed with httpcode " + xhr.status);
+					}
+
+				};
+				xhr.send(json);
+			}
+
+			//上传文件
+			const BYTES_PER_CHUNK = 1024 * 1024; // 每个文件切片大小定为1MB .
+			function startUpload(blob) {
+				var sliceindex = 0;
+				var totalSlices = Math.ceil(blob.size / BYTES_PER_CHUNK);
+				sliceUpload(blob, sliceindex, totalSlices, BYTES_PER_CHUNK);
+			}
+
+			function sliceUpload(blob, sliceIndex, totalSlices, maxSliceSize) {
+				var xhr;
+				var fd;
+				var chunk;
+				var start = sliceIndex * maxSliceSize;
+				var end = start + maxSliceSize;
+				if(end > blob.size) {
+					end = blob.size;
+				}
+
+				chunk = blob.slice(start, end); //切割文件
+
+				//构造form数据
+				fd = new FormData();
+				fd.append("file", chunk);
+				fd.append("name", blob.name);
+				fd.append("index", sliceIndex);
+
+				xhr = new XMLHttpRequest();
+				xhr.open("POST", "/action/sliceupload", true);
+				xhr.onreadystatechange = function() {
+					if(xhr.readyState == 4) {
+						if(xhr.status == 200) {
+							var respJsonObj = JSON.parse(xhr.responseText);
+							var respCmd = respJsonObj.command;
+							var respErrcode = respJsonObj.errcode;
+							var respData = respJsonObj.content;
+
+							if(respErrcode == 0) {
+								sliceIndex++;
+								if(sliceIndex == totalSlices) {
+									return uploadDoneRequest(blob);
+								}
+								return sliceUpload(blob, sliceIndex, totalSlices, maxSliceSize);
+							}
+						}
+						alert("upload file data failed");
+					}
+				};
+				xhr.send(fd);
+			}
+
+			function uploadDoneRequest(blob) {
+				var json = '{"version":"1.0", "command":"UploadDone", "content":{}}';
+				var xhr = new XMLHttpRequest();
+				xhr.open("POST", "/action/command", true);
+				xhr.setRequestHeader("Content-Type", "application/json");
+				xhr.onreadystatechange = function() {
+					if(xhr.readyState == 4) {
+						if(xhr.status == 200) {
+							var respJsonObj = JSON.parse(xhr.responseText);
+							var respCmd = respJsonObj.command;
+							var respErrcode = respJsonObj.errcode;
+							var respData = respJsonObj.content;
+
+							if(respErrcode == 0) {
+								alert("success. filepath: " + respData.filename);
+							} else {
+								alert("upload done request failed with " + respErrcode);
+							}
+							return;
+						}
+						alert("upload done request failed. httpcode  " + xhr.status);
+					}
+				};
+				xhr.send(json);
+			}
+		</script>
+	</head>
+
+	<body>
+
+		<input type="file" id="file" />
+		<button onclick="upload()">上传</button>
+	</body>
+
+</html>
